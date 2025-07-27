@@ -8,6 +8,7 @@ const app = express();
 
 app.use(cors({
   origin: 'https://mini-air-bnb-clone.netlify.app',
+  methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
 app.use(bodyParser.json());
