@@ -42,7 +42,7 @@ app.post('/register', async (req, res) => {
     res.json({ message: 'Mobile number saved successfully!' });
   } catch (err) {
     console.error("❌ Register DB error:", err.message);
-    console.error("❌ Full error:", err);
+    console.error("❌ Full error object:", err); // <-- Added for full error logging
     res.status(500).json({ message: 'Database error: ' + err.message });
   }
 });
