@@ -86,7 +86,7 @@ app.post("/register", async (req, res) => {
 // ✅ Step 2: Signup user
 // Pseudo code logic for /signup POST handler
 app.post('/signup', async (req, res) => {
-  const { phonenumber, firstName, lastName, email, dob } = req.body;
+  const { phonenumber, first_name, last_name, email, dob } = req.body;
 
   try {
     const existingUser = await pool.query(
@@ -102,7 +102,7 @@ app.post('/signup', async (req, res) => {
     // ✅ UPDATE user where phone number matches
     const result = await pool.query(
       `UPDATE users 
-       SET firstname = $1, lastname = $2, email = $3, dob = $4 
+       SET first_name = $1, last_name = $2, email = $3, dob = $4 
        WHERE phonenumber = $5
        RETURNING *`,
       [firstName, lastName, email, dob, phonenumber]
