@@ -9,18 +9,16 @@ const app = express();
 // ✅ Use VITE_CLIENT_URL from .env (used with Vite)
 const CLIENT_URL = 'https://mini-air-bnb-clone.netlify.app';
 
-// ✅ Middleware
 const corsOptions = {
-  origin: '*',
+  origin: CLIENT_URL,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
-  optionsSuccessStatus: 200 // For legacy browsers
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
-
-// Handle preflight requests manually (optional but good for debugging)
 app.options('*', cors(corsOptions));
+
 
 
 // ✅ STEP 1: Register user with mobile number only
