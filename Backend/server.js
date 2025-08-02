@@ -25,24 +25,26 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // ✅ Step 1: Register user
-app.post('/register', async (req, res) => {
-  const { phonenumber } = req.body;
-  console.log("📲 Register request received:", phonenumber);
+app.post("/register", async (req, res) => {
+  const { name, email, password, phone } = req.body;
+  console.log("📲 Register request received:", phone);
 
-  const query = `
-    INSERT INTO users (phonenumber)
-    VALUES ($1)
-    ON CONFLICT (phonenumber) DO NOTHING
-  `;
+  if (!name || !email || !password || !phone) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
 
   try {
-    await pool.query(query, [phonenumber]);
-    res.json({ message: 'Mobile number saved successfully!' });
+    const result = await pool.query(
+      "INSERT INTO users (name, email, password, phone) VALUES ($1, $2, $3, $4) RETURNING *",
+      [name, email, password, phone]
+    );
+    res.status(201).json({ message: "User registered", user: result.rows[0] });
   } catch (err) {
-    console.error("❌ Register DB error:", err.message);
-    res.status(500).json({ message: 'Database error: ' + err.message });
+    console.error("❌ Register DB error:", err);
+    res.status(500).json({ error: "Database error" });
   }
 });
+
 
 // ✅ Step 2: Signup user
 app.post('/signup', async (req, res) => {
