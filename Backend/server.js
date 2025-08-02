@@ -6,28 +6,33 @@ require('dotenv').config();
 
 const app = express();
 
-// ✅ Use VITE_CLIENT_URL from .env (used with Vite)
-const allowedOrigins = [process.env.CLIENT_URL, process.env.PRODUCTION_URL];
+// ✅ Middleware
+app.use(bodyParser.json()); // To parse JSON bodies
+
+// ✅ Allow requests from localhost and Netlify
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.PRODUCTION_URL
+];
 
 const corsOptions = {
   origin: function (origin, callback) {
+    // Allow REST clients like Postman (no origin)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.error(`❌ Blocked by CORS: ${origin}`);
       callback(new Error("Not allowed by CORS"));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
 
-
-
-// ✅ STEP 1: Register user with mobile number only
+// ✅ Step 1: Register user
 app.post('/register', async (req, res) => {
   const { phonenumber } = req.body;
   console.log("📲 Register request received:", phonenumber);
@@ -47,7 +52,7 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// ✅ STEP 2: Signup - update user info based on mobile number
+// ✅ Step 2: Signup user
 app.post('/signup', async (req, res) => {
   const { phonenumber, firstName, lastName, dob, email } = req.body;
 
@@ -89,7 +94,7 @@ app.get('/test-db', async (req, res) => {
 });
 
 // ✅ Start the server
-const PORT = process.env.DB_PORT || 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
