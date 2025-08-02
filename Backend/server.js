@@ -28,6 +28,7 @@ app.use(cors(corsOptions));
 app.post("/check-phone", async (req, res) => {
   const { phonenumber } = req.body;
   if (!phonenumber) return res.status(400).json({ error: "Phone number required" });
+
   console.log("Request body:", req.body);
 
   try {
@@ -37,18 +38,23 @@ app.post("/check-phone", async (req, res) => {
     );
 
     if (result.rows.length > 0) {
-      // Phone already exists
       return res.status(409).json({ message: "Phone number already registered" });
     }
 
-    // Phone is unique, allow to proceed
-    return res.status(200).json({ message: "Phone number is new" });
+    // ✅ INSERT phone number with null values for others
+    const insert = await pool.query(
+      `INSERT INTO users (phonenumber) VALUES ($1) RETURNING *`,
+      [phonenumber]
+    );
+
+    return res.status(201).json({ message: "Phone number saved", user: insert.rows[0] });
 
   } catch (error) {
-  console.error("❌ DB error (check-phone):", error); // <-- not just error.message
-  res.status(500).json({ error: "Internal Server Error", details: error.message });
-}
+    console.error("❌ DB error (check-phone):", error);
+    res.status(500).json({ error: "Internal Server Error", details: error.message });
+  }
 });
+
 
 
 // ✅ Step 1: Register user
