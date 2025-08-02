@@ -25,8 +25,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 // Route: POST /check-phone
 app.post("/check-phone", async (req, res) => {
-  const { phone } = req.body;
-  if (!phone) return res.status(400).json({ error: "Phone number required" });
+  const { phonenumber } = req.body;
+  if (!phonenumber) return res.status(400).json({ error: "Phone number required" });
 
   try {
     const result = await pool.query(
