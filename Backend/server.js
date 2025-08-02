@@ -105,7 +105,7 @@ app.post('/signup', async (req, res) => {
        SET first_name = $1, last_name = $2, email = $3, dob = $4 
        WHERE phonenumber = $5
        RETURNING *`,
-      [firstName, lastName, email, dob, phonenumber]
+      [first_name, last_name, email, dob, phonenumber]
     );
 
     res.status(200).json({ message: "Signup successful", user: result.rows[0] });
