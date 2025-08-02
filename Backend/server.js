@@ -43,10 +43,10 @@ app.post("/check-phone", async (req, res) => {
     // Phone is unique, allow to proceed
     return res.status(200).json({ message: "Phone number is new" });
 
-  } catch (err) {
-    console.error("❌ DB error (check-phone):", err.message);
-    return res.status(500).json({ error: "Server error" });
-  }
+  } catch (error) {
+  console.error("❌ DB error (check-phone):", error); // <-- not just error.message
+  res.status(500).json({ error: "Internal Server Error", details: error.message });
+}
 });
 
 // ✅ Step 1: Register user
