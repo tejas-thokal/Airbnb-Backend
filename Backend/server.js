@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const pool = require('./db.js');
+console.log("Pool instance check:", typeof pool.query); // Should be 'function'
 require('dotenv').config();
 
 const app = express();
