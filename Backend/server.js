@@ -49,6 +49,15 @@ app.post("/check-phone", async (req, res) => {
 }
 });
 
+pool.connect()
+  .then(() => {
+    console.log('✅ Connected to PostgreSQL');
+  })
+  .catch(err => {
+    console.error('❌ Failed to connect to DB:', err);
+  });
+
+
 // ✅ Step 1: Register user
 // Route: POST /register
 app.post("/register", async (req, res) => {
