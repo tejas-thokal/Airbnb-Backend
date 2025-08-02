@@ -1,35 +1,41 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const pool = require('./db');
+const pool = require('./db.js');
 require('dotenv').config();
 
 const app = express();
 
 // ✅ Use VITE_CLIENT_URL from .env (used with Vite)
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const CLIENT_URL = 'https://mini-air-bnb-clone.netlify.app';
 
 // ✅ Middleware
-app.use(cors({
-  origin: CLIENT_URL,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true
-}));
-app.use(bodyParser.json());
+const corsOptions = {
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  optionsSuccessStatus: 200 // For legacy browsers
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests manually (optional but good for debugging)
+app.options('*', cors(corsOptions));
+
 
 // ✅ STEP 1: Register user with mobile number only
 app.post('/register', async (req, res) => {
-  const { phone } = req.body;
-  console.log("📲 Register request received:", phone);
+  const { phonenumber } = req.body;
+  console.log("📲 Register request received:", phonenumber);
 
   const query = `
-    INSERT INTO users (mobile)
+    INSERT INTO users (phonenumber)
     VALUES ($1)
-    ON CONFLICT (mobile) DO NOTHING
+    ON CONFLICT (phonenumber) DO NOTHING
   `;
 
   try {
-    await pool.query(query, [phone]);
+    await pool.query(query, [phonenumber]);
     res.json({ message: 'Mobile number saved successfully!' });
   } catch (err) {
     console.error("❌ Register DB error:", err.message);
@@ -37,14 +43,14 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// ✅ STEP 2: Signup - update user info based on phone number
+// ✅ STEP 2: Signup - update user info based on mobile number
 app.post('/signup', async (req, res) => {
-  const { phone, firstName, lastName, dob, email } = req.body;
+  const { phonenumber, firstName, lastName, dob, email } = req.body;
 
   const query = `
     UPDATE users
     SET first_name = $1, last_name = $2, dob = $3, email = $4
-    WHERE mobile = $5
+    WHERE phonenumber = $5
   `;
 
   try {
@@ -53,11 +59,11 @@ app.post('/signup', async (req, res) => {
       lastName,
       dob,
       email,
-      phone
+      phonenumber
     ]);
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ message: "User not found for given phone number" });
+      return res.status(404).json({ message: "User not found for given mobile number" });
     }
 
     res.json({ message: "User info updated successfully!" });
@@ -67,7 +73,7 @@ app.post('/signup', async (req, res) => {
   }
 });
 
-// Optional: Test DB connection
+// ✅ Test DB route
 app.get('/test-db', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM users LIMIT 5');
@@ -79,7 +85,7 @@ app.get('/test-db', async (req, res) => {
 });
 
 // ✅ Start the server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.DB_PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
