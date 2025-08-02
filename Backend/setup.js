@@ -18,7 +18,7 @@ const createTables = async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
-        mobile VARCHAR(15) UNIQUE NOT NULL,
+        phonenumber VARCHAR(15) UNIQUE NOT NULL,
         first_name TEXT,
         last_name TEXT,
         dob DATE,
