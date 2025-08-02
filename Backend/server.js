@@ -31,7 +31,7 @@ app.post("/check-phone", async (req, res) => {
   try {
     const result = await pool.query(
       "SELECT * FROM users WHERE phonenumber = $1",
-      [phone]
+      [phonenumber]
     );
 
     if (result.rows.length > 0) {
