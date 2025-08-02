@@ -11,12 +11,3 @@ const pool = new Pool({
     rejectUnauthorized: false, // 🔐 Allow self-signed certs (needed for Render)
   }
 });
-
-pool.connect()
-  .then(() => {
-    console.log('✅ Connected to the database successfully!');
-    return pool.end();
-  })
-  .catch((err) => {
-    console.error('❌ Error connecting to the database:', err);
-  });
