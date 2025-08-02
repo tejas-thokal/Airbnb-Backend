@@ -78,34 +78,38 @@ app.post("/register", async (req, res) => {
 
 
 // ✅ Step 2: Signup user
+// Pseudo code logic for /signup POST handler
 app.post('/signup', async (req, res) => {
-  const { phonenumber, firstName, lastName, dob, email } = req.body;
-
-  const query = `
-    UPDATE users
-    SET first_name = $1, last_name = $2, dob = $3, email = $4
-    WHERE phonenumber = $5
-  `;
+  const { phonenumber, firstName, lastName, email, dob } = req.body;
 
   try {
-    const result = await pool.query(query, [
-      firstName,
-      lastName,
-      dob,
-      email,
-      phonenumber
-    ]);
+    const existingUser = await pool.query(
+      "SELECT * FROM users WHERE phonenumber = $1",
+      [phonenumber]
+    );
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "User not found for given mobile number" });
+    if (existingUser.rows.length === 0) {
+      // Instead of returning 404, INSERT new user (optional fallback)
+      return res.status(404).json({ error: "Phone number not registered. Please verify phone number first." });
     }
 
-    res.json({ message: "User info updated successfully!" });
-  } catch (err) {
-    console.error("❌ Signup DB error:", err.message);
-    res.status(500).json({ message: 'Database error: ' + err.message });
+    // ✅ UPDATE user where phone number matches
+    const result = await pool.query(
+      `UPDATE users 
+       SET firstname = $1, lastname = $2, email = $3, dob = $4 
+       WHERE phonenumber = $5
+       RETURNING *`,
+      [firstName, lastName, email, dob, phonenumber]
+    );
+
+    res.status(200).json({ message: "Signup successful", user: result.rows[0] });
+
+  } catch (error) {
+    console.error("Signup error:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // ✅ Test DB route
 app.get('/test-db', async (req, res) => {
