@@ -7,10 +7,16 @@ require('dotenv').config();
 const app = express();
 
 // ✅ Use VITE_CLIENT_URL from .env (used with Vite)
-const CLIENT_URL = 'https://mini-air-bnb-clone.netlify.app';
+const allowedOrigins = [process.env.CLIENT_URL, process.env.PRODUCTION_URL];
 
 const corsOptions = {
-  origin: CLIENT_URL,
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
   optionsSuccessStatus: 200
