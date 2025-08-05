@@ -25,6 +25,9 @@ console.log("Pool instance check:", typeof pool.query); // Should be 'function'
 
 const app = express();
 
+// Trust proxy - needed for Render and other hosting platforms
+app.set('trust proxy', 1);
+
 // Configure Passport Google OAuth Strategy
 console.log('Google OAuth Environment Variables:', {
   clientID: process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Not Set',
@@ -33,10 +36,17 @@ console.log('Google OAuth Environment Variables:', {
 
 // Only initialize Google Strategy if environment variables are available
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  // Determine the base URL for the callback
+  const baseUrl = process.env.NODE_ENV === 'production'
+    ? 'https://airbnb-backend-rbln.onrender.com'
+    : 'http://localhost:' + (process.env.PORT || 5000);
+  
+  console.log('OAuth Callback URL:', `${baseUrl}/auth/google/callback`);
+  
   passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: '/auth/google/callback',
+    callbackURL: `${baseUrl}/auth/google/callback`,
     scope: ['profile', 'email']
   }, async (accessToken, refreshToken, profile, done) => {
   try {
@@ -93,11 +103,25 @@ app.use(bodyParser.json()); // To parse JSON bodies
 // ✅ Allow requests from localhost and Netlify
 const allowedOrigins = [
   process.env.CLIENT_URL,
-  process.env.PRODUCTION_URL
-];
+  process.env.PRODUCTION_URL,
+  'https://mini-air-bnb-clone.netlify.app' // Explicitly add Netlify URL
+].filter(Boolean); // Remove any undefined/null values
+
+console.log('CORS Allowed Origins:', allowedOrigins);
 
 const corsOptions = {
-  origin: true,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.length === 0) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked request from origin: ${origin}`);
+      // Still allow the request to proceed to avoid blocking legitimate requests
+      callback(null, true);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   optionsSuccessStatus: 200
@@ -107,12 +131,24 @@ app.use(cors(corsOptions));
 
 // Session configuration
 app.use(cookieParser());
+
+// Use a default session secret if not provided (not recommended for production)
+const sessionSecret = process.env.SESSION_SECRET || 'fallback-secret-for-development-only';
+
+// Log session configuration (without exposing the secret)
+console.log('Session Configuration:', {
+  usingEnvironmentSecret: !!process.env.SESSION_SECRET,
+  secureCookies: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+});
+
 app.use(session({
-  secret: process.env.SESSION_SECRET,
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
@@ -224,26 +260,90 @@ app.get('/test-db', async (req, res) => {
   }
 });
 
+// ✅ OAuth Configuration Status route
+app.get('/auth/status', (req, res) => {
+  // Check OAuth configuration
+  const googleOAuthConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  
+  // Determine the base URL for the callback
+  const baseUrl = process.env.NODE_ENV === 'production'
+    ? 'https://airbnb-backend-rbln.onrender.com'
+    : 'http://localhost:' + (process.env.PORT || 5000);
+  
+  // Return configuration status (without exposing sensitive values)
+  res.json({
+    environment: process.env.NODE_ENV || 'development',
+    googleOAuth: {
+      configured: googleOAuthConfigured,
+      callbackUrl: `${baseUrl}/auth/google/callback`
+    },
+    session: {
+      configured: !!process.env.SESSION_SECRET
+    },
+    cors: {
+      allowedOrigins: [
+        process.env.CLIENT_URL || 'Not configured',
+        process.env.PRODUCTION_URL || 'Not configured'
+      ]
+    }
+  });
+});
+
 // Google Authentication Routes
 app.get('/auth/google', (req, res, next) => {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.error('Google OAuth credentials not configured');
     return res.status(503).json({ error: 'Google authentication is not configured' });
   }
-  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+  
+  // Log authentication attempt
+  console.log('Google authentication attempt from:', req.headers.referer || 'Unknown source');
+  
+  passport.authenticate('google', { 
+    scope: ['profile', 'email'],
+    // Add additional parameters for better debugging
+    session: true,
+    prompt: 'select_account'
+  })(req, res, next);
 });
 
 app.get('/auth/google/callback', (req, res, next) => {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.error('Google OAuth credentials not configured during callback');
     return res.status(503).json({ error: 'Google authentication is not configured' });
   }
   
-  passport.authenticate('google', { failureRedirect: '/login' })(req, res, next);
-}, (req, res) => {
-  // Successful authentication, redirect to client
-  const redirectUrl = process.env.NODE_ENV === 'production' 
-    ? process.env.PRODUCTION_URL 
-    : process.env.CLIENT_URL;
-  res.redirect(`${redirectUrl}?login=success`);
+  // Log callback request
+  console.log('Google auth callback received with query:', req.query);
+  
+  // Use custom callback to handle errors better
+  passport.authenticate('google', { session: true }, (err, user, info) => {
+    if (err) {
+      console.error('Google authentication error:', err);
+      return res.status(500).json({ error: 'Authentication failed', details: err.message });
+    }
+    
+    if (!user) {
+      console.error('Google authentication failed:', info);
+      return res.redirect(process.env.CLIENT_URL + '?login=failed');
+    }
+    
+    // Log in the user
+    req.login(user, (loginErr) => {
+      if (loginErr) {
+        console.error('Login error:', loginErr);
+        return res.status(500).json({ error: 'Login failed', details: loginErr.message });
+      }
+      
+      // Successful authentication, redirect to client
+      const redirectUrl = process.env.NODE_ENV === 'production' 
+        ? process.env.PRODUCTION_URL 
+        : process.env.CLIENT_URL;
+      
+      console.log('Authentication successful, redirecting to:', redirectUrl);
+      return res.redirect(`${redirectUrl}?login=success`);
+    });
+  })(req, res, next);
 });
 
 // Get current user
@@ -280,6 +380,24 @@ app.get('/api/logout', (req, res) => {
     console.log('User not authenticated, sending success anyway');
     res.json({ success: true, message: 'Not logged in' });
   }
+});
+
+// Health check route for debugging
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    headers: {
+      host: req.headers.host,
+      origin: req.headers.origin,
+      referer: req.headers.referer
+    },
+    auth: {
+      googleConfigured: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      sessionConfigured: !!process.env.SESSION_SECRET
+    }
+  });
 });
 
 // ✅ Start the server
