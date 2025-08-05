@@ -1,3 +1,18 @@
+// Load environment variables first
+require('dotenv').config();
+
+// Log environment variables status (without exposing values)
+console.log('Environment Variables Status:', {
+  NODE_ENV: process.env.NODE_ENV || 'Not Set',
+  PORT: process.env.PORT ? 'Set' : 'Not Set',
+  DATABASE_URL: process.env.DATABASE_URL ? 'Set' : 'Not Set',
+  CLIENT_URL: process.env.CLIENT_URL ? 'Set' : 'Not Set',
+  PRODUCTION_URL: process.env.PRODUCTION_URL ? 'Set' : 'Not Set',
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Not Set',
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ? 'Set' : 'Not Set',
+  SESSION_SECRET: process.env.SESSION_SECRET ? 'Set' : 'Not Set'
+});
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -7,17 +22,23 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
 console.log("Pool instance check:", typeof pool.query); // Should be 'function'
-require('dotenv').config();
 
 const app = express();
 
 // Configure Passport Google OAuth Strategy
-passport.use(new GoogleStrategy({
-  clientID: process.env.GOOGLE_CLIENT_ID,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: '/auth/google/callback',
-  scope: ['profile', 'email']
-}, async (accessToken, refreshToken, profile, done) => {
+console.log('Google OAuth Environment Variables:', {
+  clientID: process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Not Set',
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET ? 'Set' : 'Not Set'
+});
+
+// Only initialize Google Strategy if environment variables are available
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: '/auth/google/callback',
+    scope: ['profile', 'email']
+  }, async (accessToken, refreshToken, profile, done) => {
   try {
     // Check if user exists in database
     const existingUser = await pool.query(
@@ -48,7 +69,8 @@ passport.use(new GoogleStrategy({
     console.error('Error in Google Strategy:', error);
     return done(error, null);
   }
-}));
+  }));
+}
 
 // Serialize user to store in session
 passport.serializeUser((user, done) => {
@@ -203,18 +225,26 @@ app.get('/test-db', async (req, res) => {
 });
 
 // Google Authentication Routes
-app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-
-app.get('/auth/google/callback', 
-  passport.authenticate('google', { failureRedirect: '/login' }),
-  (req, res) => {
-    // Successful authentication, redirect to client
-    const redirectUrl = process.env.NODE_ENV === 'production' 
-      ? process.env.PRODUCTION_URL 
-      : process.env.CLIENT_URL;
-    res.redirect(`${redirectUrl}?login=success`);
+app.get('/auth/google', (req, res, next) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return res.status(503).json({ error: 'Google authentication is not configured' });
   }
-);
+  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+});
+
+app.get('/auth/google/callback', (req, res, next) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return res.status(503).json({ error: 'Google authentication is not configured' });
+  }
+  
+  passport.authenticate('google', { failureRedirect: '/login' })(req, res, next);
+}, (req, res) => {
+  // Successful authentication, redirect to client
+  const redirectUrl = process.env.NODE_ENV === 'production' 
+    ? process.env.PRODUCTION_URL 
+    : process.env.CLIENT_URL;
+  res.redirect(`${redirectUrl}?login=success`);
+});
 
 // Get current user
 app.get('/api/current-user', (req, res) => {
@@ -256,4 +286,16 @@ app.get('/api/logout', (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  
+  // Log deployment environment information
+  console.log('Server Environment:', {
+    NODE_ENV: process.env.NODE_ENV || 'development',
+    GOOGLE_AUTH: process.env.GOOGLE_CLIENT_ID ? 'Configured' : 'Not Configured'
+  });
+  
+  // Provide helpful message about environment variables
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.warn('⚠️ Google OAuth is not configured. Please add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your environment variables in Render Dashboard.');
+    console.warn('ℹ️ For Render deployments, add environment variables in the Dashboard under Environment > Environment Variables.');
+  }
 });
