@@ -62,15 +62,18 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     }
 
     // User doesn't exist, create a new user
+    // Note: phonenumber is now nullable, so we can create a user without it
+    // Set google_auth_pending to true to indicate that the user needs to complete registration
     const newUser = await pool.query(
-      `INSERT INTO users (google_id, email, first_name, last_name, profile_picture) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      `INSERT INTO users (google_id, email, first_name, last_name, profile_picture, google_auth_pending) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [
         profile.id,
         profile.emails[0].value,
         profile.name.givenName,
         profile.name.familyName,
-        profile.photos[0].value
+        profile.photos[0].value,
+        true // Mark as pending completion
       ]
     );
 
@@ -335,13 +338,20 @@ app.get('/auth/google/callback', (req, res, next) => {
         return res.status(500).json({ error: 'Login failed', details: loginErr.message });
       }
       
-      // Successful authentication, redirect to client
-      const redirectUrl = process.env.NODE_ENV === 'production' 
+      // Determine the base redirect URL
+      const baseRedirectUrl = process.env.NODE_ENV === 'production' 
         ? process.env.PRODUCTION_URL 
         : process.env.CLIENT_URL;
       
-      console.log('Authentication successful, redirecting to:', redirectUrl);
-      return res.redirect(`${redirectUrl}?login=success`);
+      // Check if the user needs to complete registration (add phone number)
+      if (user.google_auth_pending) {
+        console.log('User needs to complete registration, redirecting to phone collection page');
+        return res.redirect(`${baseRedirectUrl}?login=success&complete_registration=true&user_id=${user.id}`);
+      }
+      
+      // Successful authentication with complete profile, redirect to client
+      console.log('Authentication successful, redirecting to:', baseRedirectUrl);
+      return res.redirect(`${baseRedirectUrl}?login=success`);
     });
   })(req, res, next);
 });
@@ -352,6 +362,56 @@ app.get('/api/current-user', (req, res) => {
     res.json({ isAuthenticated: true, user: req.user });
   } else {
     res.json({ isAuthenticated: false });
+  }
+});
+
+// Update phone number for Google-authenticated users
+app.post('/api/update-phone', async (req, res) => {
+  try {
+    // Check if user is authenticated
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const { phonenumber } = req.body;
+    
+    // Validate phone number
+    if (!phonenumber || phonenumber.trim().length < 10) {
+      return res.status(400).json({ error: 'Valid phone number is required' });
+    }
+    
+    // Check if phone number is already in use by another user
+    const existingPhone = await pool.query(
+      "SELECT * FROM users WHERE phonenumber = $1 AND id != $2",
+      [phonenumber, req.user.id]
+    );
+    
+    if (existingPhone.rows.length > 0) {
+      return res.status(409).json({ error: 'Phone number already in use by another account' });
+    }
+    
+    // Update the user's phone number and mark registration as complete
+    const updatedUser = await pool.query(
+      `UPDATE users 
+       SET phonenumber = $1, google_auth_pending = false 
+       WHERE id = $2 
+       RETURNING *`,
+      [phonenumber, req.user.id]
+    );
+    
+    if (updatedUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Return the updated user
+    res.json({ 
+      message: 'Phone number updated successfully', 
+      user: updatedUser.rows[0] 
+    });
+    
+  } catch (error) {
+    console.error('Error updating phone number:', error);
+    res.status(500).json({ error: 'Server error', details: error.message });
   }
 });
 
