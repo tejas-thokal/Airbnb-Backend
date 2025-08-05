@@ -2,10 +2,68 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const pool = require('./db.js');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
 console.log("Pool instance check:", typeof pool.query); // Should be 'function'
 require('dotenv').config();
 
 const app = express();
+
+// Configure Passport Google OAuth Strategy
+passport.use(new GoogleStrategy({
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: '/auth/google/callback',
+  scope: ['profile', 'email']
+}, async (accessToken, refreshToken, profile, done) => {
+  try {
+    // Check if user exists in database
+    const existingUser = await pool.query(
+      "SELECT * FROM users WHERE google_id = $1",
+      [profile.id]
+    );
+
+    if (existingUser.rows.length > 0) {
+      // User exists, return the user
+      return done(null, existingUser.rows[0]);
+    }
+
+    // User doesn't exist, create a new user
+    const newUser = await pool.query(
+      `INSERT INTO users (google_id, email, first_name, last_name, profile_picture) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [
+        profile.id,
+        profile.emails[0].value,
+        profile.name.givenName,
+        profile.name.familyName,
+        profile.photos[0].value
+      ]
+    );
+
+    return done(null, newUser.rows[0]);
+  } catch (error) {
+    console.error('Error in Google Strategy:', error);
+    return done(error, null);
+  }
+}));
+
+// Serialize user to store in session
+passport.serializeUser((user, done) => {
+  done(null, user.id);
+});
+
+// Deserialize user from session
+passport.deserializeUser(async (id, done) => {
+  try {
+    const result = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
+    done(null, result.rows[0]);
+  } catch (error) {
+    done(error, null);
+  }
+});
 
 // ✅ Middleware
 app.use(bodyParser.json()); // To parse JSON bodies
@@ -24,6 +82,22 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Session configuration
+app.use(cookieParser());
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Initialize Passport and restore authentication state from session
+app.use(passport.initialize());
+app.use(passport.session());
 // Route: POST /check-phone
 app.post("/check-phone", async (req, res) => {
   const { phonenumber } = req.body;
@@ -125,6 +199,56 @@ app.get('/test-db', async (req, res) => {
   } catch (err) {
     console.error('❌ DB Test Error:', err.message);
     res.status(500).json({ message: 'DB test failed', error: err.message });
+  }
+});
+
+// Google Authentication Routes
+app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+app.get('/auth/google/callback', 
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res) => {
+    // Successful authentication, redirect to client
+    const redirectUrl = process.env.NODE_ENV === 'production' 
+      ? process.env.PRODUCTION_URL 
+      : process.env.CLIENT_URL;
+    res.redirect(`${redirectUrl}?login=success`);
+  }
+);
+
+// Get current user
+app.get('/api/current-user', (req, res) => {
+  if (req.isAuthenticated()) {
+    res.json({ isAuthenticated: true, user: req.user });
+  } else {
+    res.json({ isAuthenticated: false });
+  }
+});
+
+// Logout route
+app.get('/api/logout', (req, res) => {
+  console.log('Logout route called');
+  console.log('User authenticated:', req.isAuthenticated());
+  
+  if (req.isAuthenticated()) {
+    req.logout((err) => {
+      if (err) {
+        console.error('Logout error:', err);
+        return res.status(500).json({ error: 'Error during logout' });
+      }
+      console.log('User logged out successfully');
+      req.session.destroy((err) => {
+        if (err) {
+          console.error('Session destruction error:', err);
+          return res.status(500).json({ error: 'Error destroying session' });
+        }
+        res.clearCookie('connect.sid');
+        res.json({ success: true, message: 'Logged out successfully' });
+      });
+    });
+  } else {
+    console.log('User not authenticated, sending success anyway');
+    res.json({ success: true, message: 'Not logged in' });
   }
 });
 
