@@ -460,6 +460,44 @@ app.get('/health', (req, res) => {
   });
 });
 
+// API endpoint to check if a user exists by phone number
+app.post('/api/check-user-exists', async (req, res) => {
+  const { phonenumber } = req.body;
+  
+  if (!phonenumber) {
+    return res.status(400).json({ error: 'Phone number is required' });
+  }
+  
+  try {
+    // Check if user exists with this phone number
+    const result = await pool.query(
+      "SELECT * FROM users WHERE phonenumber = $1",
+      [phonenumber]
+    );
+    
+    if (result.rows.length > 0) {
+      // User exists, return user data
+      const user = result.rows[0];
+      
+      // Remove sensitive information if needed
+      delete user.password;
+      
+      return res.status(200).json({
+        exists: true,
+        user: user
+      });
+    } else {
+      // User does not exist
+      return res.status(200).json({
+        exists: false
+      });
+    }
+  } catch (error) {
+    console.error('Error checking user existence:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ✅ Start the server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
