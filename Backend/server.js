@@ -222,6 +222,8 @@ app.post("/register", async (req, res) => {
 // Pseudo code logic for /signup POST handler
 app.post('/signup', async (req, res) => {
   const { phonenumber, first_name, last_name, email, dob } = req.body;
+  
+  console.log("Received signup request:", req.body);
 
   try {
     const existingUser = await pool.query(
@@ -230,11 +232,20 @@ app.post('/signup', async (req, res) => {
     );
 
     if (existingUser.rows.length === 0) {
-      // Instead of returning 404, INSERT new user (optional fallback)
-      return res.status(404).json({ error: "Phone number not registered. Please verify phone number first." });
+      // Instead of returning 404, INSERT new user
+      console.log("Phone number not found in database, creating new user");
+      const insertResult = await pool.query(
+        `INSERT INTO users (phonenumber, first_name, last_name, email, dob) 
+         VALUES ($1, $2, $3, $4, $5) 
+         RETURNING *`,
+        [phonenumber, first_name, last_name, email, dob]
+      );
+      
+      return res.status(201).json({ message: "User created successfully", user: insertResult.rows[0] });
     }
 
     // ✅ UPDATE user where phone number matches
+    console.log("Phone number found, updating existing user");
     const result = await pool.query(
       `UPDATE users 
        SET first_name = $1, last_name = $2, email = $3, dob = $4 
@@ -247,7 +258,7 @@ app.post('/signup', async (req, res) => {
 
   } catch (error) {
     console.error("Signup error:", error);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Server error", details: error.message });
   }
 });
 
